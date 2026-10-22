@@ -100,7 +100,12 @@ class LiteLLMClient:
     async def __aenter__(self) -> "LiteLLMClient":
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
-            timeout=httpx.Timeout(self.timeout),
+            timeout=httpx.Timeout(
+                connect=10.0,      # Connection timeout
+                read=60.0,         # Read timeout per chunk
+                write=10.0,        # Write timeout
+                pool=10.0,         # Pool timeout
+            ),
             headers=self._get_headers(),
         )
         return self
@@ -144,7 +149,7 @@ class LiteLLMClient:
         stream: bool = True,
         options: dict[str, Any] | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Stream chat completions from LiteLLM."""
+        """Stream chat completions from LiteLLM with error handling."""
         payload = {
             "model": model or self.settings.litellm.default_model,
             "messages": self._convert_messages(messages),
@@ -161,35 +166,50 @@ class LiteLLMClient:
             if "num_predict" in options:
                 payload["max_tokens"] = options["num_predict"]
 
-        async with self.client.stream("POST", "/v1/chat/completions", json=payload) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line.strip():
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                async with self.client.stream("POST", "/v1/chat/completions", json=payload) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            if data_str.strip() == "[DONE]":
+                                return
+                            try:
+                                data = json.loads(data_str)
+                                resp = LiteLLMStreamResponse(**data)
+                                choice = resp.choices[0] if resp.choices else None
+                                if choice and choice.delta:
+                                    content = choice.delta.content or ""
+                                    tool_calls = choice.delta.tool_calls
+                                    yield StreamChunk(
+                                        content=content,
+                                        tool_calls=[
+                                            LiteLLMToolCall(**tc) for tc in tool_calls
+                                        ] if tool_calls else None,
+                                        done=choice.finish_reason is not None,
+                                        metadata={
+                                            "usage": resp.usage,
+                                            "model": resp.model,
+                                        } if choice.finish_reason else None,
+                                    )
+                            except json.JSONDecodeError:
+                                continue
+                    return  # Success, exit retry loop
+            except (httpx.RemoteProtocolError, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
+                if attempt < max_retries:
+                    await asyncio.sleep(1.0 * (attempt + 1))  # Exponential backoff
                     continue
-                if line.startswith("data: "):
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]":
-                        break
-                    try:
-                        data = json.loads(data_str)
-                        resp = LiteLLMStreamResponse(**data)
-                        choice = resp.choices[0] if resp.choices else None
-                        if choice and choice.delta:
-                            content = choice.delta.content or ""
-                            tool_calls = choice.delta.tool_calls
-                            yield StreamChunk(
-                                content=content,
-                                tool_calls=[
-                                    LiteLLMToolCall(**tc) for tc in tool_calls
-                                ] if tool_calls else None,
-                                done=choice.finish_reason is not None,
-                                metadata={
-                                    "usage": resp.usage,
-                                    "model": resp.model,
-                                } if choice.finish_reason else None,
-                            )
-                    except json.JSONDecodeError:
-                        continue
+                # Final attempt failed, yield error chunk
+                yield StreamChunk(
+                    content="",
+                    done=True,
+                    metadata={"error": f"Connection failed after {max_retries + 1} attempts: {str(e)}"},
+                )
+                return
 
     async def chat_once(
         self,
@@ -198,7 +218,7 @@ class LiteLLMClient:
         tools: list[dict[str, Any]] | None = None,
         options: dict[str, Any] | None = None,
     ) -> LiteLLMResponse:
-        """Non-streaming chat completion."""
+        """Non-streaming chat completion with retry logic."""
         payload = {
             "model": model or self.settings.litellm.default_model,
             "messages": self._convert_messages(messages),
@@ -214,17 +234,33 @@ class LiteLLMClient:
             if "num_predict" in options:
                 payload["max_tokens"] = options["num_predict"]
 
-        response = await self.client.post("/v1/chat/completions", json=payload)
-        response.raise_for_status()
-        data = response.json()
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self.client.post("/v1/chat/completions", json=payload)
+                response.raise_for_status()
+                data = response.json()
 
-        # Handle both streaming-style (delta) and non-streaming (message) response formats
-        if data.get("choices") and "message" in data["choices"][0] and "delta" not in data["choices"][0]:
-            # Convert message format to delta format for consistency
-            for choice in data["choices"]:
-                choice["delta"] = choice.get("message", {})
+                # Handle both streaming-style (delta) and non-streaming (message) response formats
+                if data.get("choices") and "message" in data["choices"][0] and "delta" not in data["choices"][0]:
+                    # Convert message format to delta format for consistency
+                    for choice in data["choices"]:
+                        choice["delta"] = choice.get("message", {})
 
-        return LiteLLMResponse(**data)
+                return LiteLLMResponse(**data)
+            except (httpx.RemoteProtocolError, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
+                if attempt < max_retries:
+                    await asyncio.sleep(1.0 * (attempt + 1))
+                    continue
+                # Return error response
+                return LiteLLMResponse(
+                    id="error",
+                    object="chat.completion",
+                    created=0,
+                    model=model or self.settings.litellm.default_model,
+                    choices=[],
+                    usage={"error": f"Connection failed after {max_retries + 1} attempts: {str(e)}"},
+                )
 
     async def list_models(self) -> list[dict[str, Any]]:
         """List available models from LiteLLM."""

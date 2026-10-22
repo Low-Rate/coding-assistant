@@ -38,7 +38,7 @@ class FileTreePanel(DirectoryTree):
             if status:
                 code = status[:2].strip()
                 icons = {
-                    "M": "📝",  # Modified
+                    "M": "[MD]",  # Modified
                     "A": "➕",  # Added
                     "D": "🗑️",  # Deleted
                     "R": "🔀",  # Renamed
@@ -76,7 +76,7 @@ class SimpleFileTree(Tree):
     """Simpler file tree without DirectoryTree auto-loading."""
 
     def __init__(self, path: str, **kwargs):
-        super().__init__("📁 " + Path(path).name, **kwargs)
+        super().__init__("[DIR] " + Path(path).name, **kwargs)
         self.project_root = Path(path).resolve()
         self._build_tree(self.root, self.project_root)
 
@@ -95,7 +95,7 @@ class SimpleFileTree(Tree):
                 continue
 
             if entry.is_dir():
-                child = node.add(f"📁 {entry.name}", data={"path": entry, "is_dir": True})
+                child = node.add(f"[DIR] {entry.name}", data={"path": entry, "is_dir": True})
                 child.expand()  # Auto-expand first level
                 if depth < 2:
                     self._build_tree(child, entry, depth + 1)
@@ -107,15 +107,15 @@ class SimpleFileTree(Tree):
         """Get icon for file type."""
         suffix = path.suffix.lower()
         icons = {
-            ".py": "🐍", ".js": "📜", ".ts": "📘", ".tsx": "⚛️", ".jsx": "⚛️",
-            ".rs": "🦀", ".go": "🐹", ".java": "☕", ".kt": "🎯",
-            ".cpp": "⚙️", ".cc": "⚙️", ".c": "⚙️", ".h": "📎",
-            ".cs": "🔷", ".php": "🐘", ".rb": "💎", ".swift": "🐦",
-            ".md": "📝", ".txt": "📄", ".json": "📋", ".yaml": "⚙️", ".yml": "⚙️",
-            ".toml": "⚙️", ".ini": "⚙️", ".cfg": "⚙️",
-            ".sh": "🖥️", ".bash": "🖥️", ".zsh": "🖥️",
-            ".dockerfile": "🐳", ".sql": "🗄️",
-            ".html": "🌐", ".css": "🎨", ".scss": "🎨",
-            ".graphql": "🔗", ".proto": "📦",
+            ".py": "[PY]", ".js": "[JS]", ".ts": "[TS]", ".tsx": "[REACT]", ".jsx": "[REACT]",
+            ".rs": "[RS]", ".go": "[GO]", ".java": "[JAVA]", ".kt": "[KT]",
+            ".cpp": "[CFG]", ".cc": "[CFG]", ".c": "[CFG]", ".h": "[HDR]",
+            ".cs": "[CS]", ".php": "[PHP]", ".rb": "[RB]", ".swift": "[SWIFT]",
+            ".md": "[MD]", ".txt": "[TXT]", ".json": "[JSON]", ".yaml": "[CFG]", ".yml": "[CFG]",
+            ".toml": "[CFG]", ".ini": "[CFG]", ".cfg": "[CFG]",
+            ".sh": "[SH]", ".bash": "[SH]", ".zsh": "[SH]",
+            ".dockerfile": "[DOCKER]", ".sql": "[SQL]",
+            ".html": "[HTML]", ".css": "[CSS]", ".scss": "[CSS]",
+            ".graphql": "[GQL]", ".proto": "[PROTO]",
         }
-        return icons.get(suffix, "📄")
+        return icons.get(suffix, "[TXT]")

@@ -51,17 +51,17 @@ class StatusPanel(Static):
     def update_display(self) -> None:
         """Update the status display."""
         status_icons = {
-            "ready": "🟢",
-            "thinking": "🟡",
-            "tool_running": "🔵",
-            "error": "🔴",
+            "ready": "[OK]",
+            "thinking": "[...]",
+            "tool_running": "[RUN]",
+            "error": "[ERR]",
         }
-        icon = status_icons.get(self.status, "⚪")
+        icon = status_icons.get(self.status, "[?]")
         backend_label = "Ollama" if self.backend == "ollama" else "LiteLLM"
 
         self.update(
             f"{icon} {backend_label}: {self.model} | "
-            f"Tokens: {self.tokens_in}→{self.tokens_out} | "
+            f"Tokens: {self.tokens_in}->{self.tokens_out} | "
             f"Memory: {self.memory_items} | "
             f"Status: {self.status}"
         )

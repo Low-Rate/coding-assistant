@@ -42,12 +42,12 @@ class ChatPanel(VerticalScroll):
 
     def add_tool_call(self, tool_name: str) -> None:
         """Add a tool call indicator."""
-        self._chat_log.write(f"[yellow]🔧 {tool_name}...[/yellow]")
+        self._chat_log.write(f"[yellow][TOOL] {tool_name}...[/yellow]")
 
     def add_tool_result(self, tool_name: str, result: Any) -> None:
         """Add a tool result."""
         if result.success:
-            self._chat_log.write(f"[green]✓ {tool_name}[/green]")
+            self._chat_log.write(f"[green][OK] {tool_name}[/green]")
             if result.output:
                 # Truncate long output
                 output = result.output[:500]
@@ -55,7 +55,7 @@ class ChatPanel(VerticalScroll):
                     output += "..."
                 self._chat_log.write(f"[dim]{output}[/dim]")
         else:
-            self._chat_log.write(f"[red]✗ {tool_name}: {result.error}[/red]")
+            self._chat_log.write(f"[red][ERR] {tool_name}: {result.error}[/red]")
 
     def clear(self) -> None:
         """Clear chat history."""

@@ -62,7 +62,12 @@ class OllamaClient:
     async def __aenter__(self) -> "OllamaClient":
         self._client = httpx.AsyncClient(
             base_url=self.host,
-            timeout=httpx.Timeout(self.timeout),
+            timeout=httpx.Timeout(
+                connect=10.0,
+                read=120.0,
+                write=10.0,
+                pool=10.0,
+            ),
             limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
         )
         return self
